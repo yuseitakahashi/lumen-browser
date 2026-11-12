@@ -1,0 +1,49 @@
+self.LUMEN_SR_ASSETS = Object.freeze({
+  "schema": 1,
+  "ortVersion": "1.31.1",
+  "modelName": "SwinIR-S classical/lightweight x2, DIV2K, fixed 512 input",
+  "tileSize": 512,
+  "scale": 2,
+  "checkpointSha256": "193b229909ca89cd8b55de9c9e7fce146ae759d59dfcd78d8feb9dd1d6fa0fd7",
+  "model": {
+    "path": "assets/swinir-s-x2-512.onnx",
+    "bytes": 10713786,
+    "sha256": "2b6b4ed6f7ea2ecbbb3047340999e0909142ed3e7c479318e38a5cc939c6a824"
+  },
+  "runtimeJs": {
+    "path": "assets/ort.webgpu.min.js",
+    "bytes": 70811,
+    "sha256": "03f4423bd12fdbf5eb4ffcf6c1a3c471c760e10c2a1533f1ca64f5a7619c7731"
+  },
+  "runtimeMjs": {
+    "path": "assets/ort-wasm-simd-threaded.asyncify.mjs",
+    "bytes": 53457,
+    "sha256": "59cf781530e1a16df2a291d78798e3ec1152467edaec402d6f9599d85047c302"
+  },
+  "wasm": {
+    "bytes": 28747738,
+    "sha256": "ca319e9539cd0f1e291cf56074760121eaf39650f5dbf84b6e52c07f4b2944ec",
+    "parts": [
+      {
+        "path": "assets/ort-wasm-simd-threaded.asyncify.wasm.part00",
+        "bytes": 8388608,
+        "sha256": "84328754170c9d2e57c0cb1588fa856ca997dbfbc4926f2ab336c695d948debb"
+      },
+      {
+        "path": "assets/ort-wasm-simd-threaded.asyncify.wasm.part01",
+        "bytes": 8388608,
+        "sha256": "75ad9053d210933cb524efe0a055a39131f162d19d417057f4bf51697b6f97cf"
+      },
+      {
+        "path": "assets/ort-wasm-simd-threaded.asyncify.wasm.part02",
+        "bytes": 8388608,
+        "sha256": "a949c9bd67acef113ace07b2d48f2d9511d6a11d1f22381a5338fa124fa42495"
+      },
+      {
+        "path": "assets/ort-wasm-simd-threaded.asyncify.wasm.part03",
+        "bytes": 3581914,
+        "sha256": "4259bf521ffe160c140f1d8746816a3dd84b7c18d0acc657cc8eb818fb84cdf6"
+      }
+    ]
+  }
+});

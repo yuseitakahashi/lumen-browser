@@ -1,0 +1,48 @@
+LUMEN browser super-resolution experimental runtime
+
+SwinIR: Image Restoration Using Swin Transformer
+Jingyun Liang, Jiezhang Cao, Guolei Sun, Kai Zhang, Luc Van Gool, Radu Timofte.
+Official source: https://github.com/JingyunLiang/SwinIR
+Repository license: Apache License 2.0 (LICENSE-SwinIR.txt).
+Original checkpoint: 002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth
+https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth
+Checkpoint SHA-256: 193b229909ca89cd8b55de9c9e7fce146ae759d59dfcd78d8feb9dd1d6fa0fd7
+Modification: exported from the upstream PyTorch model to fixed 512 x 512
+RGB input / 1024 x 1024 output ONNX, opset 17, float32, on 2026-11-05.
+Weights are unchanged. The browser tile pipeline is a separate LUMEN change.
+No separate checkpoint-license file was supplied with the release asset;
+the upstream repository license is preserved without claiming a new license.
+
+ONNX Runtime Web 1.31.1
+Copyright (c) Microsoft Corporation
+https://github.com/microsoft/onnxruntime
+MIT License (LICENSE-ONNX-Runtime.txt).
+Original npm package metadata declares MIT.
+Unmodified ort.webgpu.min.js and matching asyncify .mjs/.wasm are used.
+The .wasm binary is split into fixed byte chunks for static-host file limits,
+then reassembled and SHA-256 verified before execution. No binary change.
+
+This is the lightweight x2 restoration model, not the real-world GAN model.
+Its training objective and name do not guarantee preservation of lettering,
+brush strokes, faces, texture, or truthful restoration of missing detail.
+
+
+Restormer single-image defocus, optional local restoration candidate
+
+Upstream: https://github.com/swz30/Restormer
+Source commit: 68dc6ac472db26f16361150cb7a96a1bc87da93f
+Copyright (c) 2022 Syed Waqas Zamir and contributors
+Upstream repository license: MIT (LICENSE-Restormer.txt).
+Official release asset: https://github.com/swz30/Restormer/releases/download/v1.0/single_image_defocus_deblurring.pth
+Checkpoint SHA256: 7dce451f33f8f5e0faf7c4e3996e5dcc1bd425ecd1ada99b0f9750e490fd4c9e
+The official release does not include a separate weight-license file. The upstream repository license and release provenance are retained here; no additional rights are asserted.
+
+Browser conversion: fixed NCHW 1x3x576x576, scale1, ONNX opset17. Conv/FFN/residual weights and operations use FP16; LayerNorm and attention arithmetic use FP32 (qkv/project Conv remain FP16), FP32 input/output. No retraining, INT8 quantization, image downsampling, or GELU approximation. PixelUnshuffle exports to Reshape/Transpose. Initializers use IEEE half conversion, without converter small-constant clipping. LayerNorm/attention epsilon stays FP32. Original Clip remains FP32; rejected all-half/Max conversion is not distributed.
+Converted ONNX SHA256: aa84f9dab6d432da4a3a1ad670d771cb85740f51a5541fa1050461ea891e35bf
+Converted ONNX bytes: 55434277, split into 8MiB parts for static delivery. Every part and the assembled model are checked against fixed hashes.
+Runtime: ONNX Runtime Web 1.31.1 native WebGPU EP / Asyncify. See LICENSE-ONNX-Runtime.txt and ThirdPartyNotices-ONNX-Runtime.txt.
+
+Application adaptation: exact original photo pixels in encoded sRGB/255; no perspective resample before inference. Global source grid stride160; tile576; core320; context128; reflect101 only at true photograph boundaries. Residual high-pass is residual minus separable Gaussian sigma4/radius16, applied at strength0.5. Four overlapping cores use raised-cosine weights. Floating point values remain unclamped until the final ordinary Engine render/8bit encoding.
+Attention depends on each tile's entire context. Overlap reduces seams but is not proof of whole-image equivalence or of faithful recovery. The model can alter marks and texture, and can worsen already sharp or compression-only images. It is optional, initially off, and must be judged against ordinary processing at the same output dimensions and view.
+
+Photos and settings are not uploaded. The dedicated worker fetches only fixed model/runtime files from the same site. There is no paid API or automatic CPU/ordinary fallback for this model.
