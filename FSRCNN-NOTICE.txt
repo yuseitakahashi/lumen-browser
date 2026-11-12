@@ -1,0 +1,5 @@
+FSRCNN x2 weights by Saafke / FSRCNN_Tensorflow, Apache-2.0.
+Source: https://github.com/Saafke/FSRCNN_Tensorflow
+Original model SHA256: 366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c
+Browser port: frozen float32 weights extracted without training or quantization; CPU Conv2D, PReLU, DepthToSpace and RGB/YCrCb implemented locally. Original model code is not executed. This is an independently implemented browser adapter.
+License: FSRCNN-LICENSE.txt
