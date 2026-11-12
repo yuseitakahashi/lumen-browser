@@ -1,0 +1,208 @@
+name: Publish verified LUMEN BETA17
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pages: read
+    steps:
+      - name: Check out this exact publication revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Stage and verify every BETA17 file
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import shutil
+          import threading
+          import time
+          from urllib.error import HTTPError
+          from urllib.parse import quote
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          root = Path.cwd()
+          raw = (root / 'publication-file-manifest.json').read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == 'ea689d3c07fdcf0812a1df682516b0cdbed89e7d98caa55d7c52cd6e800ce923', 'Unexpected publication manifest'
+          manifest = json.loads(raw)
+          assert manifest['sourceCommit'] == '228409ccdd4f157274e6ad2a279d994a5b4158a4'
+          assert manifest['version'] == '2026.11.12-PUBLIC-BETA17'
+          files = manifest['files']
+          assert len(files) == manifest['fileCount'] == 94
+          assert len({entry['path'] for entry in files}) == 94
+          assert sum(entry['bytes'] for entry in files) == manifest['totalBytes'] == 259620188
+          stage = root / '_site'
+          stage.mkdir(exist_ok=False)
+          origin = 'https://lumen-browser-studio-20261101.racing-angel-2682.chatgpt.site/'
+          stopped = threading.Event()
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          def validate_path(value):
+              path = PurePosixPath(value)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert path.as_posix() == value and '\\' not in value
+              assert not any(part.startswith('.') for part in path.parts)
+              for index in range(1, len(path.parts) + 1):
+                  assert not root.joinpath(*path.parts[:index]).is_symlink(), 'Symlink is not permitted'
+              return path
+
+          def check_bytes(data, entry):
+              assert len(data) == entry['bytes'], 'Size mismatch: ' + entry['path']
+              assert hashlib.sha256(data).hexdigest() == entry['sha256'], 'Hash mismatch: ' + entry['path']
+
+          def recover(entry):
+              name = entry['path']
+              relative = validate_path(name)
+              local = root / relative
+              output = stage / relative
+              output.parent.mkdir(parents=True, exist_ok=True)
+              if local.is_file():
+                  data = local.read_bytes()
+                  check_bytes(data, entry)
+                  output.write_bytes(data)
+                  return {'path': name, 'source': 'repository', 'bytes': len(data)}
+              # Only unchanged model/runtime/license assets may be recovered.
+              # Missing app code or app licenses fail instead of using an old app.
+              assert relative.parts[0] == 'assets', 'Missing checked-in app file: ' + name
+              if stopped.is_set():
+                  raise RuntimeError('Asset source stopped after access or rate-limit response')
+              started = time.monotonic()
+              request = Request(origin + quote(name, safe='/'), headers={
+                  'Accept-Encoding': 'identity',
+                  'User-Agent': 'LUMEN-BETA17-verified-static-publication/1.0',
+              })
+              try:
+                  with build_opener(NoRedirect()).open(request, timeout=60) as response:
+                      assert response.status == 200, 'Unexpected asset response'
+                      data = bytearray()
+                      while True:
+                          remaining = 60 - (time.monotonic() - started)
+                          if remaining <= 0:
+                              raise TimeoutError('Asset request exceeded 60 seconds')
+                          raw = getattr(getattr(response, 'fp', None), 'raw', None)
+                          sock = getattr(raw, '_sock', None)
+                          if sock is not None:
+                              sock.settimeout(remaining)
+                          chunk = response.read1(256 * 1024)
+                          if not chunk:
+                              break
+                          data.extend(chunk)
+                          assert len(data) <= entry['bytes'], 'Asset exceeds expected size'
+              except HTTPError as error:
+                  if error.code in (403, 429):
+                      stopped.set()
+                  raise
+              check_bytes(data, entry)
+              output.write_bytes(data)
+              return {'path': name, 'source': 'verified-public-asset', 'bytes': len(data)}
+
+          # Downloads are anonymous, fixed-origin, one attempt, at most four at a
+          # time. No app JavaScript, WASM, or models are executed in this job.
+          with ThreadPoolExecutor(max_workers=4) as pool:
+              results = list(pool.map(recover, files))
+          expected = {entry['path'] for entry in files}
+          actual = {p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.is_file()}
+          assert actual == expected, 'Staging membership differs from exact BETA17'
+          assert not any(p.is_symlink() for p in stage.rglob('*'))
+          for entry in files:
+              check_bytes((stage / entry['path']).read_bytes(), entry)
+          report = {
+              'version': manifest['version'], 'sourceCommit': manifest['sourceCommit'],
+              'files': results, 'verifiedFiles': len(files),
+              'recoveredFiles': sum(item['source'] != 'repository' for item in results),
+              'totalBytes': sum(item['bytes'] for item in results),
+          }
+          (root / 'publication-build-report.json').write_text(json.dumps(report, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Verified all 94 BETA17 files (259,620,188 bytes) against fixed SHA-256 values.\n')
+              summary.write('Recovered public assets: ' + str(report['recoveredFiles']) + '.\n')
+          print(json.dumps({key: value for key, value in report.items() if key != 'files'}))
+          PY
+
+      - name: Preserve verified assets in this repository
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import shutil
+          import subprocess
+
+          root = Path.cwd()
+          manifest = json.loads((root / 'publication-file-manifest.json').read_text())
+          paths = []
+          for entry in manifest['files']:
+              if not entry['path'].startswith('assets/'):
+                  continue
+              source = root / '_site' / entry['path']
+              data = source.read_bytes()
+              assert len(data) == entry['bytes'] and hashlib.sha256(data).hexdigest() == entry['sha256']
+              target = root / entry['path']
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, target)
+              paths.append(entry['path'])
+          assert len(paths) == 43
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          staged = subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines()
+          assert set(staged).issubset(set(paths)), 'Unexpected staged change'
+          if staged:
+              subprocess.run([
+                  'git', '-c', 'user.name=github-actions[bot]',
+                  '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com',
+                  'commit', '-m', 'Preserve exact verified BETA17 public model and runtime assets',
+              ], check=True)
+              # Standard checkout-managed GITHUB_TOKEN; no personal token and no
+              # forced update. Fail on concurrent main changes instead of overwrite.
+              subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
+          else:
+              print('All 43 assets already committed; old Sites is not needed.')
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload only the 94 verified static files
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish verified BETA17
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
